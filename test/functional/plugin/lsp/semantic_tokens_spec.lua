@@ -181,6 +181,7 @@ describe('semantic token highlighting', function()
       exec_lua(function()
         local bufnr = vim.api.nvim_get_current_buf()
         vim.api.nvim_win_set_buf(0, bufnr)
+        vim.bo[bufnr].fileformat = 'unix'
         vim.bo[bufnr].filetype = 'some-filetype'
         _G._start_server(_G.server2)
       end)
@@ -197,6 +198,56 @@ describe('semantic token highlighting', function()
         {2:#else}                                   |
         {2:    printf("%d\n", x);}                  |
         {2:#endif}                                  |
+        }                                       |
+        ^}                                       |
+        {1:~                                       }|*3
+                                                |
+      ]],
+      }
+    end)
+
+    it('buffer is highlighted with multiline tokens with fileformat=dos', function()
+      insert(text)
+
+      exec_lua(function()
+        _G.server_dos = _G._create_server({
+          capabilities = {
+            textDocumentSync = vim.lsp.protocol.TextDocumentSyncKind.Full,
+            semanticTokensProvider = {
+              full = { delta = false },
+              legend = vim.fn.json_decode(legend),
+            },
+          },
+          handlers = {
+            ['textDocument/semanticTokens/full'] = function(_, _, callback)
+              callback(nil, {
+                data = { 5, 0, 82, 0, 0 },
+                resultId = 1,
+              })
+            end,
+          },
+        })
+      end, legend)
+      exec_lua(function()
+        local bufnr = vim.api.nvim_get_current_buf()
+        vim.api.nvim_win_set_buf(0, bufnr)
+        vim.bo[bufnr].fileformat = 'dos'
+        vim.bo[bufnr].filetype = 'some-filetype'
+        _G._start_server(_G.server_dos)
+      end)
+
+      screen:expect {
+        grid = [[
+        #include <iostream>                     |
+                                                |
+        int main()                              |
+        {                                       |
+            int x;                              |
+        {2:#ifdef __cplusplus}                      |
+        {2:    std::cout << x << "\n";}             |
+        {2:#else}                                   |
+        {2:    printf("%d\n", x);}                  |
+        {2:#e}ndif                                  |
         }                                       |
         ^}                                       |
         {1:~                                       }|*3
