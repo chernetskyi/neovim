@@ -731,6 +731,49 @@ describe('vim.lsp.util', function()
       }
     end
 
+    it('reports an error instead of raising if the buffer cannot be loaded', function()
+      -- A swapfile owned by another process makes loading the buffer fail with
+      -- E325, which used to escape into the calling LSP handler. #34319
+      command('set swapfile directory=.')
+      exec_lua(function()
+        vim.api.nvim_create_autocmd('SwapExists', {
+          callback = function()
+            vim.v.swapchoice = 'q'
+          end,
+        })
+      end)
+
+      for _, focus in ipairs({ true, false }) do
+        local file = tmpname(false)
+        write_file(file, 'first line\nsecond line\n')
+        local dir, name = file:match('^(.*)[/\\]([^/\\]+)$')
+        write_file(('%s/.%s.swp'):format(dir, name), 'not really a swapfile')
+
+        local result = exec_lua(function(uri, f)
+          local notified = {}
+          vim.notify = function(msg)
+            notified[#notified + 1] = msg
+          end
+          local before = {
+            wins = #vim.api.nvim_list_wins(),
+            tagstack = vim.fn.gettagstack().length,
+          }
+          local ok = vim.lsp.util.show_document({ uri = uri }, 'utf-16', { focus = f })
+          return {
+            ok,
+            #notified > 0 and notified[1]:match('E325') ~= nil,
+            before.wins == #vim.api.nvim_list_wins(),
+            before.tagstack == vim.fn.gettagstack().length,
+          }
+        end, vim.uri_from_fname(file), focus)
+
+        eq(false, result[1], 'returns false (focus=' .. tostring(focus) .. ')')
+        eq(true, result[2], 'reports E325 (focus=' .. tostring(focus) .. ')')
+        eq(true, result[3], 'leaves no window behind (focus=' .. tostring(focus) .. ')')
+        eq(true, result[4], 'leaves the tagstack alone (focus=' .. tostring(focus) .. ')')
+      end
+    end)
+
     it('jumps to a Location if focus is true', function()
       local pos = show_document(location(0, 9, 0, 9), true, true)
       eq(1, pos.line)

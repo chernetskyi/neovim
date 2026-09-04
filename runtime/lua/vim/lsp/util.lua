@@ -872,6 +872,14 @@ function M.show_document(location, position_encoding, opts)
   end
   local bufnr = vim.uri_to_bufnr(uri)
 
+  -- Load the buffer before touching the jumplist, the tagstack or the window
+  -- layout, so that a failure leaves none of them behind
+  local loaded, err = pcall(vim.fn.bufload, bufnr)
+  if not loaded then
+    vim.notify(tostring(err), vim.log.levels.ERROR)
+    return false
+  end
+
   opts = opts or {}
   local focus = vim.nonnil(opts.focus, true)
   if focus then
